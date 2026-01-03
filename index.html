@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>우리 동네 실시간 날씨</title>
+    <style>
+        /* 1. 보기 좋은 디자인 (CSS) */
+        body {
+            font-family: 'Pretendard', 'Malgun Gothic', sans-serif;
+            background: #eef2f3;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        .container {
+            background: white;
+            width: 360px;
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+
+        h1 {
+            color: #333;
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+
+        /* 입력 폼 스타일 */
+        .control-group {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+        }
+
+        select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            outline: none;
+        }
+
+        button {
+            width: 100%;
+            padding: 15px;
+            background: #4a90e2;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        button:hover {
+            background: #357abd;
+        }
+
+        /* 날씨 결과 카드 스타일 */
+        #result-card {
+            margin-top: 25px;
+            display: none; /* 처음에 숨김 */
+        }
+
+        .weather-main {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 15px;
+        }
+
+        .temperature {
+            font-size: 48px;
+            font-weight: bold;
+            color: #2d3436;
+            margin: 10px 0;
+        }
+
+        .condition {
+            font-size: 18px;
+            color: #636e72;
+            margin-bottom: 5px;
+        }
+
+        .update-time {
+            font-size: 12px;
+            color: #b2bec3;
+        }
+
+        .details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .detail-item {
+            background: #fff;
+            border: 1px solid #eee;
+            padding: 15px;
+            border-radius: 12px;
+        }
+
+        .label { font-size: 12px; color: #888; display: block; margin-bottom: 5px; }
+        .value { font-size: 16px; font-weight: bold; color: #333; }
+
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>🌤️ 실시간 날씨 조회</h1>
+        
+        <div class="control-group">
+            <select id="region-select">
+                <option value="">시/도 선택</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <select id="city-select" disabled>
+                <option value="">시/군/구 선택</option>
+            </select>
+        </div>
+
+        <button onclick="getWeather()">날씨 확인하기</button>
+
+        <div id="result-card">
+            <div class="weather-main">
+                <div class="condition" id="pty-state">정보 없음</div>
+                <div class="temperature" id="temp">--°</div>
+                <div class="update-time" id="time-info">--:-- 기준</div>
+            </div>
+            
+            <div class="details">
+                <div class="detail-item">
+                    <span class="label">💧 습도</span>
+                    <span class="value" id="humid">--%</span>
+                </div>
+                <div class="detail-item">
+                    <span class="label">☔ 1시간 강수</span>
+                    <span class="value" id="rain">--mm</span>
+                </div>
+                <div class="detail-item">
+                    <span class="label">🌬️ 풍속</span>
+                    <span class="value" id="wind">--m/s</span>
+                </div>
+                <div class="detail-item">
+                    <span class="label">🧭 동네 위치</span>
+                    <span class="value" id="location-name">--</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 1. 설정값 (API 키 및 좌표 데이터)
+        const SERVICE_KEY = "d7c02f1982ff03f57db5df6f0f339ea3f0f8a65b9daa2d32cac45e4517d5a987";
+        
+        // 선생님이 주신 좌표 데이터 (주요 지역 샘플)
+        const gridData = {
+            '경기도': {
+                '광명시': { nx: 58, ny: 125 },
+                '수원시': { nx: 60, ny: 121 },
+                '안양시': { nx: 59, ny: 122 },
+                '성남시': { nx: 62, ny: 123 },
+                '과천시': { nx: 61, ny: 124 },
+                '부천시': { nx: 56, ny: 124 }
+            },
+            '서울특별시': {
+                '종로구': { nx: 60, ny: 127 },
+                '강남구': { nx: 61, ny: 126 }
+            },
+            '부산광역시': { '해운대구': { nx: 98, ny: 76 } }
+            // 필요하면 여기에 데이터를 더 추가하면 됩니다.
+        };
+
+        // 2. 드롭다운 메뉴 초기화
+        const regionSelect = document.getElementById('region-select');
+        const citySelect = document.getElementById('city-select');
+
+        // 시/도 목록 채우기
+        Object.keys(gridData).forEach(region => {
+            let option = document.createElement('option');
+            option.value = region;
+            option.text = region;
+            regionSelect.add(option);
+        });
+
+        // 시/도 변경 시 시/군/구 목록 채우기
+        regionSelect.addEventListener('change', (e) => {
+            citySelect.innerHTML = '<option value="">시/군/구 선택</option>';
+            citySelect.disabled = true;
+            
+            if (e.target.value) {
+                const cities = gridData[e.target.value];
+                Object.keys(cities).forEach(city => {
+                    let option = document.createElement('option');
+                    option.value = city;
+                    option.text = city;
+                    citySelect.add(option);
+                });
+                citySelect.disabled = false;
+            }
+        });
+
+        // 3. 핵심 기능: 날씨 가져오기
+        async function getWeather() {
+            const region = regionSelect.value;
+            const city = citySelect.value;
+
+            if (!region || !city) {
+                alert("지역을 먼저 선택해주세요!");
+                return;
+            }
+
+            // 로딩 표시
+            document.querySelector('button').innerText = "불러오는 중...";
+            
+            // 좌표 가져오기
+            const { nx, ny } = gridData[region][city];
+
+            // 시간 자동 계산 (매시 40분 업데이트 로직)
+            const now = new Date();
+            // 45분 전이면 1시간 전 데이터를 요청 (서버 제공 시간 고려)
+            if (now.getMinutes() < 45) {
+                now.setHours(now.getHours() - 1);
+            }
+
+            const year = now.getFullYear();
+            const month = ('0' + (now.getMonth() + 1)).slice(-2);
+            const day = ('0' + now.getDate()).slice(-2);
+            const baseDate = `${year}${month}${day}`;
+            const baseTime = ('0' + now.getHours()).slice(-2) + '00';
+
+            // API 주소 조립
+            let url = `http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst`;
+            url += `?serviceKey=${SERVICE_KEY}`;
+            url += `&pageNo=1&numOfRows=1000&dataType=JSON`;
+            url += `&base_date=${baseDate}&base_time=${baseTime}`;
+            url += `&nx=${nx}&ny=${ny}`;
+
+            // CORS 에러 방지용 프록시 (수업용)
+            const proxyUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);
+
+            try {
+                const response = await fetch(proxyUrl);
+                const data = await response.json();
+
+                if (data.response.header.resultCode !== '00') {
+                    throw new Error("데이터 오류");
+                }
+
+                // 데이터 파싱
+                const items = data.response.body.items.item;
+                let weather = { temp: '-', humid: '-', rain: '-', wind: '-', pty: '0' };
+
+                items.forEach(item => {
+                    if (item.category === "T1H") weather.temp = item.obsrValue;
+                    if (item.category === "REH") weather.humid = item.obsrValue;
+                    if (item.category === "RN1") weather.rain = item.obsrValue;
+                    if (item.category === "WSD") weather.wind = item.obsrValue;
+                    if (item.category === "PTY") weather.pty = item.obsrValue;
+                });
+
+                // 화면 업데이트
+                updateUI(weather, baseDate, baseTime, city);
+
+            } catch (error) {
+                console.error(error);
+                alert("날씨 정보를 가져오는데 실패했습니다.\n(잠시 후 다시 시도해주세요)");
+            } finally {
+                document.querySelector('button').innerText = "날씨 확인하기";
+            }
+        }
+
+        // 4. 화면 표시 함수
+        function updateUI(weather, date, time, city) {
+            document.getElementById('result-card').style.display = "block";
+            
+            document.getElementById('temp').innerText = `${weather.temp}°`;
+            document.getElementById('humid').innerText = `${weather.humid}%`;
+            document.getElementById('rain').innerText = `${weather.rain}mm`;
+            document.getElementById('wind').innerText = `${weather.wind}m/s`;
+            document.getElementById('location-name').innerText = city;
+
+            // 시간 포맷팅 (예: 1700 -> 17시 00분)
+            const timeStr = `${time.substring(0,2)}:${time.substring(2,4)}`;
+            document.getElementById('time-info').innerText = `${timeStr} 기준 데이터`;
+
+            // 강수 형태(PTY) 코드를 글자로 변환
+            const ptyState = {
+                '0': '맑음/흐림 (비 안 옴)',
+                '1': '비 ☔',
+                '2': '비/눈 🌧️',
+                '3': '눈 ❄️',
+                '5': '빗방울 💧',
+                '6': '빗방울/눈날림',
+                '7': '눈날림'
+            };
+            document.getElementById('pty-state').innerText = ptyState[weather.pty] || "상태 정보 없음";
+        }
+    </script>
+</body>
+</html>
